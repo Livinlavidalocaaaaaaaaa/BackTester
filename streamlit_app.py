@@ -20,51 +20,71 @@ class MovingAverageCrossover(bt.Strategy):
     def __init__(self):
         self.crossover = bt.indicators.CrossOver(bt.indicators.SMA(period=self.p.fast), 
                                                  bt.indicators.SMA(period=self.p.slow))
+        self.order_count = 0
+        self.signal = None
 
     def next(self):
         if not self.position:
             if self.crossover > 0:
                 self.buy()
+                self.order_count += 1
+                self.signal = 1
         elif self.crossover < 0:
             self.close()
+            self.order_count += 1
+            self.signal = 0
 
 class RSIStrategy(bt.Strategy):
     params = (('period', 14), ('overbought', 70), ('oversold', 30))
     
     def __init__(self):
         self.rsi = bt.indicators.RSI(period=self.p.period)
+        self.order_count = 0
+        self.signal = None
 
     def next(self):
         if not self.position:
             if self.rsi < self.p.oversold:
                 self.buy()
+                self.order_count += 1
+                self.signal = 1
         elif self.rsi > self.p.overbought:
             self.close()
+            self.order_count += 1
+            self.signal = 0
 
 class MACDStrategy(bt.Strategy):
     params = (('fast', 12), ('slow', 26), ('signal', 9))
     
     def __init__(self):
         self.macd = bt.indicators.MACD(period_me1=self.p.fast, period_me2=self.p.slow, period_signal=self.p.signal)
+        self.order_count = 0
+        self.signal = None
 
     def next(self):
         if not self.position:
             if self.macd.macd > self.macd.signal:
                 self.buy()
+                self.order_count += 1
+                self.signal = 1
         elif self.macd.macd < self.macd.signal:
             self.close()
+            self.order_count += 1
+            self.signal = 0
 
 # Function to run backtest
-def run_backtest(data, strategy, start_cash=10000.0, commission=0.001):
+def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
     cerebro = bt.Cerebro()
     cerebro.adddata(data)
-    cerebro.addstrategy(strategy)
+    cerebro.addstrategy(strategy_class)
     cerebro.broker.setcash(start_cash)
     cerebro.broker.setcommission(commission=commission)
     strategies = cerebro.run()
     final_value = cerebro.broker.getvalue()
-    trade_count = sum(1 for strat in strategies for order in strat.orders if order.status == order.Completed)
-    return final_value, trade_count
+    strategy = strategies[0]
+    trade_count = strategy.order_count
+    current_signal = strategy.signal
+    return final_value, trade_count, current_signal
 
 # Function to run buy and hold
 def buy_and_hold(data, start_cash=10000.0):
@@ -105,7 +125,7 @@ for ticker, name in dutch_tickers.items():
         }
         
         for strat_name, strategy in strategies.items():
-            final_value, trade_count = run_backtest(data, strategy, start_cash, commission)
+            final_value, trade_count, current_signal = run_backtest(data, strategy, start_cash, commission)
             profit = final_value - start_cash
             profit_percentage = (profit / start_cash) * 100
 
@@ -124,7 +144,8 @@ for ticker, name in dutch_tickers.items():
                 'Profit (%)': round(profit_percentage, 2),
                 'Close Date': close_date,
                 'Trades': trade_count,
-                'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2)
+                'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
+                'Buy/Sell Signal': current_signal
             })
     else:
         st.error(f"No data found for the ticker {ticker} within the selected date range.")

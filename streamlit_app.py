@@ -4,23 +4,15 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import io
-import glob
+from Strategies.moving_average_crossover import MovingAverageCrossover
+from Strategies.rsi_strategy import RSIStrategy
+from Strategies.macd_strategy import MACDStrategy
 
 # Define folder paths
-STRATEGIES_FOLDER = './Strategies/'
 TICKERS_CSV_PATH = './Tickers/tickers.csv'
 
 # Read tickers from CSV
 tickers_df = pd.read_csv(TICKERS_CSV_PATH)
-
-# Import all strategies dynamically
-strategy_files = glob.glob(STRATEGIES_FOLDER + '*.py')
-strategies = {}
-for strategy_file in strategy_files:
-    strategy_name = strategy_file.split('/')[-1].split('.')[0]
-    module = __import__(f'Strategies.{strategy_name}', fromlist=[strategy_name])
-    strategy_class = getattr(module, strategy_name)
-    strategies[strategy_name] = strategy_class
 
 # Function to run backtest
 def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
@@ -32,8 +24,8 @@ def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
     strategies = cerebro.run()
     final_value = cerebro.broker.getvalue()
     strategy = strategies[0]
-    trade_count = strategy.order_count
-    current_signal = strategy.signal
+    trade_count = strategy.order_count if hasattr(strategy, 'order_count') else 0
+    current_signal = strategy.signal if hasattr(strategy, 'signal') else None
     return final_value, trade_count, current_signal
 
 # Function to run buy and hold
@@ -71,8 +63,10 @@ for index, row in tickers_df.iterrows():
     if not df.empty:
         data = bt.feeds.PandasData(dataname=df)
         
-        for strat_name, strategy in strategies.items():
-            final_value, trade_count, current_signal = run_backtest(data, strategy, start_cash, commission)
+        for strat_name, strategy_class in [('MovingAverageCrossover', MovingAverageCrossover),
+                                           ('RSIStrategy', RSIStrategy),
+                                           ('MACDStrategy', MACDStrategy)]:
+            final_value, trade_count, current_signal = run_backtest(data, strategy_class, start_cash, commission)
             profit = final_value - start_cash
             profit_percentage = (profit / start_cash) * 100
 

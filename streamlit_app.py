@@ -4,73 +4,23 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import io
-import matplotlib.pyplot as plt
+import glob
 
-# Define the list of tickers with their full names
-dutch_tickers = {
-    'ASML.AS': 'ASML Holding N.V.',
-    'REN.AS': 'Relx PLC',
-    'UNA.AS': 'Unilever PLC'
-}
+# Define folder paths
+STRATEGIES_FOLDER = './Strategies/'
+TICKERS_CSV_PATH = './Tickers/tickers.csv'
 
-# Define strategies
-class MovingAverageCrossover(bt.Strategy):
-    params = (('fast', 20), ('slow', 50))
-    
-    def __init__(self):
-        self.crossover = bt.indicators.CrossOver(bt.indicators.SMA(period=self.p.fast), 
-                                                 bt.indicators.SMA(period=self.p.slow))
-        self.order_count = 0
-        self.signal = None
+# Read tickers from CSV
+tickers_df = pd.read_csv(TICKERS_CSV_PATH)
 
-    def next(self):
-        if not self.position:
-            if self.crossover > 0:
-                self.buy()
-                self.order_count += 1
-                self.signal = 1
-        elif self.crossover < 0:
-            self.close()
-            self.order_count += 1
-            self.signal = 0
-
-class RSIStrategy(bt.Strategy):
-    params = (('period', 14), ('overbought', 70), ('oversold', 30))
-    
-    def __init__(self):
-        self.rsi = bt.indicators.RSI(period=self.p.period)
-        self.order_count = 0
-        self.signal = None
-
-    def next(self):
-        if not self.position:
-            if self.rsi < self.p.oversold:
-                self.buy()
-                self.order_count += 1
-                self.signal = 1
-        elif self.rsi > self.p.overbought:
-            self.close()
-            self.order_count += 1
-            self.signal = 0
-
-class MACDStrategy(bt.Strategy):
-    params = (('fast', 12), ('slow', 26), ('signal', 9))
-    
-    def __init__(self):
-        self.macd = bt.indicators.MACD(period_me1=self.p.fast, period_me2=self.p.slow, period_signal=self.p.signal)
-        self.order_count = 0
-        self.signal = None
-
-    def next(self):
-        if not self.position:
-            if self.macd.macd > self.macd.signal:
-                self.buy()
-                self.order_count += 1
-                self.signal = 1
-        elif self.macd.macd < self.macd.signal:
-            self.close()
-            self.order_count += 1
-            self.signal = 0
+# Import all strategies dynamically
+strategy_files = glob.glob(STRATEGIES_FOLDER + '*.py')
+strategies = {}
+for strategy_file in strategy_files:
+    strategy_name = strategy_file.split('/')[-1].split('.')[0]
+    module = __import__(f'Strategies.{strategy_name}', fromlist=[strategy_name])
+    strategy_class = getattr(module, strategy_name)
+    strategies[strategy_name] = strategy_class
 
 # Function to run backtest
 def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
@@ -107,7 +57,10 @@ start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
 results = []
 
-for ticker, name in dutch_tickers.items():
+for index, row in tickers_df.iterrows():
+    ticker = row['Ticker']
+    name = row['Name']
+    
     # Fetch data
     try:
         df = yf.download(ticker, start=start_date, end=end_date)
@@ -117,12 +70,6 @@ for ticker, name in dutch_tickers.items():
 
     if not df.empty:
         data = bt.feeds.PandasData(dataname=df)
-        
-        strategies = {
-            'Moving Average Crossover': MovingAverageCrossover,
-            'RSI': RSIStrategy,
-            'MACD': MACDStrategy
-        }
         
         for strat_name, strategy in strategies.items():
             final_value, trade_count, current_signal = run_backtest(data, strategy, start_cash, commission)
@@ -153,19 +100,3 @@ for ticker, name in dutch_tickers.items():
 # Display results
 results_df = pd.DataFrame(results)
 st.table(results_df)
-
-# Plot
-cerebro = bt.Cerebro()
-cerebro.adddata(data)
-cerebro.addstrategy(MovingAverageCrossover)  # Using MA Crossover for plotting
-cerebro.broker.setcash(start_cash)
-cerebro.broker.setcommission(commission=commission)
-
-# Run cerebro to generate plot data
-cerebro.run()
-
-# Plotting with Backtrader and saving the figure
-fig = cerebro.plot(style='candlestick')[0][0]
-buf = io.BytesIO()
-fig.savefig(buf, format='png')
-st.image(buf)

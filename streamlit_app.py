@@ -117,8 +117,11 @@ if not df.empty:
     cerebro.broker.setcash(start_cash)
     cerebro.broker.setcommission(commission=commission)
     
-    fig = plt.figure(figsize=(12, 8))
-    cerebro.plot(fig=fig)
+    # Run cerebro to generate plot data
+    cerebro.run()
+    
+    # Plotting with Backtrader and saving the figure
+    fig = cerebro.plot(style='candlestick')[0][0]
     buf = io.BytesIO()
     fig.savefig(buf, format='png')
     st.image(buf)

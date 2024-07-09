@@ -3,16 +3,12 @@ import backtrader as bt
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-import io
 import os
 import importlib.util
 
 # Define folder paths
 STRATEGIES_DIR = './Strategies/'
 TICKERS_CSV_PATH = './Tickers/tickers.csv'
-
-# Read tickers from CSV
-tickers_df = pd.read_csv(TICKERS_CSV_PATH)
 
 # Function to dynamically import all strategies from Strategies directory
 def import_strategies():
@@ -42,14 +38,6 @@ def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
     current_signal = strategy.signal if hasattr(strategy, 'signal') else None
     return final_value, trade_count, current_signal
 
-# Function to run buy and hold
-def buy_and_hold(data, start_cash=10000.0):
-    initial_price = data['Close'].iloc[0]
-    final_price = data['Close'].iloc[-1]
-    shares = start_cash / initial_price
-    final_value = shares * final_price
-    return final_value
-
 # Streamlit app
 st.title('Dutch Stock Strategy Backtester')
 
@@ -63,6 +51,9 @@ start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
 # Import all strategies dynamically
 strategies = import_strategies()
+
+# Read tickers from CSV
+tickers_df = pd.read_csv(TICKERS_CSV_PATH)
 
 results = []
 
@@ -85,10 +76,6 @@ for index, row in tickers_df.iterrows():
             profit = final_value - start_cash
             profit_percentage = (profit / start_cash) * 100
 
-            buy_and_hold_value = buy_and_hold(df, start_cash)
-            buy_and_hold_profit = buy_and_hold_value - start_cash
-            diff_to_buy_and_hold = profit - buy_and_hold_profit
-
             close_date = df.index[-1].strftime('%Y-%m-%d')
             
             results.append({
@@ -100,7 +87,6 @@ for index, row in tickers_df.iterrows():
                 'Profit (%)': round(profit_percentage, 2),
                 'Close Date': close_date,
                 'Trades': trade_count,
-                'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
                 'Buy/Sell Signal': current_signal
             })
     else:

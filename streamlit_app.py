@@ -61,8 +61,18 @@ def run_backtest(data, strategy, start_cash=10000.0, commission=0.001):
     cerebro.addstrategy(strategy)
     cerebro.broker.setcash(start_cash)
     cerebro.broker.setcommission(commission=commission)
-    cerebro.run()
-    return cerebro.broker.getvalue()
+    strategies = cerebro.run()
+    final_value = cerebro.broker.getvalue()
+    trade_count = sum(1 for strat in strategies for order in strat.orders if order.status == order.Completed)
+    return final_value, trade_count
+
+# Function to run buy and hold
+def buy_and_hold(data, start_cash=10000.0):
+    initial_price = data.close[0]
+    final_price = data.close[-1]
+    shares = start_cash / initial_price
+    final_value = shares * final_price
+    return final_value
 
 # Streamlit app
 st.title('Dutch Stock Strategy Backtester')
@@ -71,60 +81,70 @@ st.title('Dutch Stock Strategy Backtester')
 start_cash = st.number_input('Starting Capital (EUR)', min_value=1000, value=10000, step=1000)
 commission = st.number_input('Commission (fraction)', min_value=0.0, max_value=0.1, value=0.001, step=0.001, format="%.3f")
 
-# Ticker selection
-selected_ticker = st.selectbox('Select Ticker', list(dutch_tickers.keys()), format_func=lambda x: f"{x} - {dutch_tickers[x]}")
-
 # Date range selection
 end_date = st.date_input('End Date', value=datetime.now())
 start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
-# Fetch data
-try:
-    df = yf.download(selected_ticker, start=start_date, end=end_date)
-except Exception as e:
-    st.error(f"Failed to fetch data: {e}")
-    st.stop()
+results = []
 
-if not df.empty:
-    data = bt.feeds.PandasData(dataname=df)
-    
-    strategies = {
-        'Moving Average Crossover': MovingAverageCrossover,
-        'RSI': RSIStrategy,
-        'MACD': MACDStrategy
-    }
-    
-    results = []
-    
-    for name, strategy in strategies.items():
-        final_value = run_backtest(data, strategy, start_cash, commission)
-        profit = final_value - start_cash
-        profit_percentage = (profit / start_cash) * 100
-        results.append({
-            'Strategy': name,
-            'Final Value (EUR)': round(final_value, 2),
-            'Profit (EUR)': round(profit, 2),
-            'Profit (%)': round(profit_percentage, 2)
-        })
-    
-    results_df = pd.DataFrame(results)
-    st.table(results_df)
-    
-    # Plot
-    cerebro = bt.Cerebro()
-    cerebro.adddata(data)
-    cerebro.addstrategy(MovingAverageCrossover)  # Using MA Crossover for plotting
-    cerebro.broker.setcash(start_cash)
-    cerebro.broker.setcommission(commission=commission)
-    
-    # Run cerebro to generate plot data
-    cerebro.run()
-    
-    # Plotting with Backtrader and saving the figure
-    fig = cerebro.plot(style='candlestick')[0][0]
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png')
-    st.image(buf)
-    
-else:
-    st.error("No data found for the selected ticker and date range.")
+for ticker, name in dutch_tickers.items():
+    # Fetch data
+    try:
+        df = yf.download(ticker, start=start_date, end=end_date)
+    except Exception as e:
+        st.error(f"Failed to fetch data for {ticker}: {e}")
+        continue
+
+    if not df.empty:
+        data = bt.feeds.PandasData(dataname=df)
+        
+        strategies = {
+            'Moving Average Crossover': MovingAverageCrossover,
+            'RSI': RSIStrategy,
+            'MACD': MACDStrategy
+        }
+        
+        for strat_name, strategy in strategies.items():
+            final_value, trade_count = run_backtest(data, strategy, start_cash, commission)
+            profit = final_value - start_cash
+            profit_percentage = (profit / start_cash) * 100
+
+            buy_and_hold_value = buy_and_hold(df, start_cash)
+            buy_and_hold_profit = buy_and_hold_value - start_cash
+            diff_to_buy_and_hold = profit - buy_and_hold_profit
+
+            close_date = df.index[-1].strftime('%Y-%m-%d')
+            
+            results.append({
+                'Ticker': ticker,
+                'Name': name,
+                'Strategy': strat_name,
+                'Final Value (EUR)': round(final_value, 2),
+                'Profit (EUR)': round(profit, 2),
+                'Profit (%)': round(profit_percentage, 2),
+                'Close Date': close_date,
+                'Trades': trade_count,
+                'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2)
+            })
+    else:
+        st.error(f"No data found for the ticker {ticker} within the selected date range.")
+
+# Display results
+results_df = pd.DataFrame(results)
+st.table(results_df)
+
+# Plot
+cerebro = bt.Cerebro()
+cerebro.adddata(data)
+cerebro.addstrategy(MovingAverageCrossover)  # Using MA Crossover for plotting
+cerebro.broker.setcash(start_cash)
+cerebro.broker.setcommission(commission=commission)
+
+# Run cerebro to generate plot data
+cerebro.run()
+
+# Plotting with Backtrader and saving the figure
+fig = cerebro.plot(style='candlestick')[0][0]
+buf = io.BytesIO()
+fig.savefig(buf, format='png')
+st.image(buf)

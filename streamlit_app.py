@@ -88,8 +88,8 @@ def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
 
 # Function to run buy and hold
 def buy_and_hold(data, start_cash=10000.0):
-    initial_price = data.close[0]
-    final_price = data.close[-1]
+    initial_price = data['Close'].iloc[0]
+    final_price = data['Close'].iloc[-1]
     shares = start_cash / initial_price
     final_value = shares * final_price
     return final_value

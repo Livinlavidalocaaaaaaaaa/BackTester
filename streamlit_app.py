@@ -74,12 +74,16 @@ commission = st.number_input('Commission (fraction)', min_value=0.0, max_value=0
 # Ticker selection
 selected_ticker = st.selectbox('Select Ticker', list(dutch_tickers.keys()), format_func=lambda x: f"{x} - {dutch_tickers[x]}")
 
-# Date range
-end_date = datetime.now()
-start_date = end_date - timedelta(days=365)
+# Date range selection
+end_date = st.date_input('End Date', value=datetime.now())
+start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
 # Fetch data
-df = yf.download(selected_ticker, start=start_date, end=end_date)
+try:
+    df = yf.download(selected_ticker, start=start_date, end=end_date)
+except Exception as e:
+    st.error(f"Failed to fetch data: {e}")
+    st.stop()
 
 if not df.empty:
     data = bt.feeds.PandasData(dataname=df)
@@ -120,4 +124,4 @@ if not df.empty:
     st.image(buf)
     
 else:
-    st.error("Failed to fetch data. Please try again.")
+    st.error("No data found for the selected ticker and date range.")

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import io
 import time
 import random
+import openpyxl
 
 # Define folder paths
 TICKERS_CSV_PATH = './Tickers/tickers.csv'
@@ -93,26 +94,29 @@ for index, row in tickers_df.iterrows():
         data = bt.feeds.PandasData(dataname=df)
         
         for strat_name, strategy_class in all_strategies.items():
-            final_value, trade_count, current_signal = run_backtest(data, strategy_class, start_cash, commission)
-            profit = final_value - start_cash
-            profit_percentage = (profit / start_cash) * 100
-            buy_and_hold_value = buy_and_hold(df, start_cash)
-            buy_and_hold_profit = buy_and_hold_value - start_cash
-            diff_to_buy_and_hold = profit - buy_and_hold_profit
-            close_date = df.index[-1].strftime('%Y-%m-%d')  # Use the actual last date from the data
-            
-            results.append({
-                'Ticker': ticker,
-                'Name': name,
-                'Strategy': strat_name,
-                'Final Value (EUR)': round(final_value, 2),
-                'Profit (EUR)': round(profit, 2),
-                'Profit (%)': round(profit_percentage, 2),
-                'Close Date': close_date,
-                'Trades': trade_count,
-                'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
-                'Buy/Sell Signal': current_signal
-            })
+            try:
+                final_value, trade_count, current_signal = run_backtest(data, strategy_class, start_cash, commission)
+                profit = final_value - start_cash
+                profit_percentage = (profit / start_cash) * 100
+                buy_and_hold_value = buy_and_hold(df, start_cash)
+                buy_and_hold_profit = buy_and_hold_value - start_cash
+                diff_to_buy_and_hold = profit - buy_and_hold_profit
+                close_date = df.index[-1].strftime('%Y-%m-%d') if len(df.index) > 0 else 'N/A'
+                
+                results.append({
+                    'Ticker': ticker,
+                    'Name': name,
+                    'Strategy': strat_name,
+                    'Final Value (EUR)': round(final_value, 2),
+                    'Profit (EUR)': round(profit, 2),
+                    'Profit (%)': round(profit_percentage, 2),
+                    'Close Date': close_date,
+                    'Trades': trade_count,
+                    'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
+                    'Buy/Sell Signal': current_signal
+                })
+            except Exception as e:
+                st.error(f"Error processing {ticker} with strategy {strat_name}: {str(e)}")
     
     # Update progress bar
     progress_bar.progress((index + 1) / len(tickers_df))
@@ -122,33 +126,38 @@ results_df = pd.DataFrame(results)
 st.dataframe(results_df, use_container_width=True)
 
 # Download buttons
-csv = results_df.to_csv(index=False).encode('utf-8')
-
-st.download_button(
-    label="Download as CSV",
-    data=csv,
-    file_name="backtesting_results.csv",
-    mime="text/csv"
-)
-
-# Try to generate Excel file if openpyxl is available
-try:
-    import openpyxl
-    excel_buffer = io.BytesIO()
-    results_df.to_excel(excel_buffer, index=False, engine='openpyxl')
-    excel_data = excel_buffer.getvalue()
-    
-    st.download_button(
-        label="Download as Excel",
-        data=excel_data,
-        file_name="backtesting_results.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-except ImportError:
-    st.warning("Excel download is not available. Install 'openpyxl' for Excel support.")
-
-# Display the actual date range of the data
 if not results_df.empty:
-    min_date = results_df['Close Date'].min()
-    max_date = results_df['Close Date'].max()
-    st.write(f"Data range: from {min_date} to {max_date}")
+    csv = results_df.to_csv(index=False).encode('utf-8')
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.download_button(
+            label="Download as CSV",
+            data=csv,
+            file_name="backtesting_results.csv",
+            mime="text/csv"
+        )
+
+    with col2:
+        excel_buffer = io.BytesIO()
+        results_df.to_excel(excel_buffer, index=False, engine='openpyxl')
+        excel_data = excel_buffer.getvalue()
+        
+        st.download_button(
+            label="Download as Excel",
+            data=excel_data,
+            file_name="backtesting_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    # Display the actual date range of the data
+    close_dates = results_df['Close Date'].dropna()
+    if not close_dates.empty:
+        min_date = close_dates.min()
+        max_date = close_dates.max()
+        st.write(f"Data range: from {min_date} to {max_date}")
+    else:
+        st.write("No valid date range found in the results.")
+else:
+    st.warning("No results to display or download.")

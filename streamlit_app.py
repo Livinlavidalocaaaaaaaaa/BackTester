@@ -57,6 +57,7 @@ def fetch_data_with_retry(ticker, start_date, end_date, max_retries=3):
         try:
             df = yf.download(ticker, start=start_date, end=end_date)
             if not df.empty:
+                st.write(f"Data fetched for {ticker}: from {df.index[0]} to {df.index[-1]}")
                 return df
         except Exception as e:
             if attempt < max_retries - 1:
@@ -82,6 +83,8 @@ start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 all_strategies = load_strategies()
 
 results = []
+all_start_dates = []
+all_end_dates = []
 progress_bar = st.progress(0)
 for index, row in tickers_df.iterrows():
     ticker = row['Ticker']
@@ -91,6 +94,8 @@ for index, row in tickers_df.iterrows():
     df = fetch_data_with_retry(ticker, start_date, end_date)
     
     if not df.empty:
+        all_start_dates.append(df.index[0])
+        all_end_dates.append(df.index[-1])
         data = bt.feeds.PandasData(dataname=df)
         
         for strat_name, strategy_class in all_strategies.items():
@@ -101,7 +106,6 @@ for index, row in tickers_df.iterrows():
                 buy_and_hold_value = buy_and_hold(df, start_cash)
                 buy_and_hold_profit = buy_and_hold_value - start_cash
                 diff_to_buy_and_hold = profit - buy_and_hold_profit
-                close_date = df.index[-1].strftime('%Y-%m-%d') if len(df.index) > 0 else 'N/A'
                 
                 results.append({
                     'Ticker': ticker,
@@ -110,7 +114,8 @@ for index, row in tickers_df.iterrows():
                     'Final Value (EUR)': round(final_value, 2),
                     'Profit (EUR)': round(profit, 2),
                     'Profit (%)': round(profit_percentage, 2),
-                    'Close Date': close_date,
+                    'Start Date': df.index[0].strftime('%Y-%m-%d'),
+                    'End Date': df.index[-1].strftime('%Y-%m-%d'),
                     'Trades': trade_count,
                     'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
                     'Buy/Sell Signal': current_signal
@@ -152,12 +157,15 @@ if not results_df.empty:
         )
 
     # Display the actual date range of the data
-    close_dates = results_df['Close Date'].dropna()
-    if not close_dates.empty:
-        min_date = close_dates.min()
-        max_date = close_dates.max()
-        st.write(f"Data range: from {min_date} to {max_date}")
+    if all_start_dates and all_end_dates:
+        overall_start = min(all_start_dates)
+        overall_end = max(all_end_dates)
+        st.write(f"Overall data range: from {overall_start.strftime('%Y-%m-%d')} to {overall_end.strftime('%Y-%m-%d')}")
     else:
         st.write("No valid date range found in the results.")
 else:
     st.warning("No results to display or download.")
+
+# Display some statistics about the data
+st.write(f"Number of tickers processed: {len(set(results_df['Ticker']))}")
+st.write(f"Number of strategies applied: {len(set(results_df['Strategy']))}")

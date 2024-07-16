@@ -51,8 +51,7 @@ def buy_and_hold(data, start_cash=10000.0):
     final_value = shares * final_price
     return final_value
 
-# Function to fetch data with retry
-def fetch_data_with_retry(ticker, start_date, end_date, max_retries=3):
+def fetch_data_with_retry(ticker, start_date, end_date, max_retries=5):
     for attempt in range(max_retries):
         try:
             df = yf.download(ticker, start=start_date, end=end_date)
@@ -62,10 +61,10 @@ def fetch_data_with_retry(ticker, start_date, end_date, max_retries=3):
         except Exception as e:
             if attempt < max_retries - 1:
                 st.warning(f"Attempt {attempt + 1} failed for {ticker}: {str(e)}. Retrying...")
-                time.sleep(random.uniform(1, 3))  # Random delay between retries
+                time.sleep(random.uniform(1, 5))  # Increased max delay time
             else:
                 st.error(f"Failed to fetch data for {ticker} after {max_retries} attempts: {str(e)}")
-    return pd.DataFrame()  # Return empty DataFrame if all attempts fail
+    return pd.DataFrame()
 
 # Streamlit app
 st.set_page_config(layout="wide")  # Set the page to wide mode
@@ -76,7 +75,7 @@ start_cash = st.number_input('Starting Capital (EUR)', min_value=1000, value=100
 commission = st.number_input('Commission (fraction)', min_value=0.0, max_value=0.1, value=0.001, step=0.001, format="%.3f")
 
 # Date range selection
-end_date = st.date_input('End Date', value=datetime.now())
+end_date = st.date_input('End Date', value=datetime.now() + timedelta(days=1))
 start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
 # Load all strategies

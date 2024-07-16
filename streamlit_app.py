@@ -6,6 +6,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
+import io
 
 # Define folder paths
 TICKERS_CSV_PATH = './Tickers/tickers.csv'
@@ -48,6 +49,7 @@ def buy_and_hold(data, start_cash=10000.0):
     return final_value
 
 # Streamlit app
+st.set_page_config(layout="wide")  # Set the page to wide mode
 st.title('Dutch Stock Strategy Backtester')
 
 # User inputs
@@ -82,7 +84,7 @@ for index, row in tickers_df.iterrows():
             buy_and_hold_value = buy_and_hold(df, start_cash)
             buy_and_hold_profit = buy_and_hold_value - start_cash
             diff_to_buy_and_hold = profit - buy_and_hold_profit
-            close_date = df.index[-1].strftime('%Y-%m-%d')
+            close_date = df.index[-1].strftime('%Y-%m-%d')  # Use the actual last date from the data
             
             results.append({
                 'Ticker': ticker,
@@ -101,4 +103,32 @@ for index, row in tickers_df.iterrows():
 
 # Display results
 results_df = pd.DataFrame(results)
-st.table(results_df)
+st.dataframe(results_df, use_container_width=True)
+
+# Download buttons
+csv = results_df.to_csv(index=False).encode('utf-8')
+excel_buffer = io.BytesIO()
+results_df.to_excel(excel_buffer, index=False, engine='openpyxl')
+excel_data = excel_buffer.getvalue()
+
+col1, col2 = st.columns(2)
+with col1:
+    st.download_button(
+        label="Download as CSV",
+        data=csv,
+        file_name="backtesting_results.csv",
+        mime="text/csv"
+    )
+with col2:
+    st.download_button(
+        label="Download as Excel",
+        data=excel_data,
+        file_name="backtesting_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+# Display the actual date range of the data
+if not results_df.empty:
+    min_date = results_df['Close Date'].min()
+    max_date = results_df['Close Date'].max()
+    st.write(f"Data range: from {min_date} to {max_date}")

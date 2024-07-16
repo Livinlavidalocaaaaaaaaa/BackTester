@@ -2,9 +2,17 @@ import os
 import importlib
 import inspect
 import backtrader as bt
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
 
-# Path to the Strategies folder
+# Define folder paths
+TICKERS_CSV_PATH = './Tickers/tickers.csv'
 STRATEGIES_PATH = './Strategies'
+
+# Read tickers from CSV
+tickers_df = pd.read_csv(TICKERS_CSV_PATH)
 
 def load_strategies():
     strategies = {}
@@ -16,6 +24,39 @@ def load_strategies():
                 if inspect.isclass(obj) and issubclass(obj, bt.Strategy) and obj != bt.Strategy:
                     strategies[name] = obj
     return strategies
+
+# Function to run backtest
+def run_backtest(data, strategy_class, start_cash=10000.0, commission=0.001):
+    cerebro = bt.Cerebro()
+    cerebro.adddata(data)
+    cerebro.addstrategy(strategy_class)
+    cerebro.broker.setcash(start_cash)
+    cerebro.broker.setcommission(commission=commission)
+    strategies = cerebro.run()
+    final_value = cerebro.broker.getvalue()
+    strategy = strategies[0]
+    trade_count = strategy.order_count if hasattr(strategy, 'order_count') else 0
+    current_signal = strategy.signal if hasattr(strategy, 'signal') else None
+    return final_value, trade_count, current_signal
+
+# Function to run buy and hold
+def buy_and_hold(data, start_cash=10000.0):
+    initial_price = data['Close'].iloc[0]
+    final_price = data['Close'].iloc[-1]
+    shares = start_cash / initial_price
+    final_value = shares * final_price
+    return final_value
+
+# Streamlit app
+st.title('Dutch Stock Strategy Backtester')
+
+# User inputs
+start_cash = st.number_input('Starting Capital (EUR)', min_value=1000, value=10000, step=1000)
+commission = st.number_input('Commission (fraction)', min_value=0.0, max_value=0.1, value=0.001, step=0.001, format="%.3f")
+
+# Date range selection
+end_date = st.date_input('End Date', value=datetime.now())
+start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 
 # Load all strategies
 all_strategies = load_strategies()

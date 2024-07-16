@@ -7,6 +7,8 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+import time
+import random
 
 # Define folder paths
 TICKERS_CSV_PATH = './Tickers/tickers.csv'
@@ -48,6 +50,21 @@ def buy_and_hold(data, start_cash=10000.0):
     final_value = shares * final_price
     return final_value
 
+# Function to fetch data with retry
+def fetch_data_with_retry(ticker, start_date, end_date, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            df = yf.download(ticker, start=start_date, end=end_date)
+            if not df.empty:
+                return df
+        except Exception as e:
+            if attempt < max_retries - 1:
+                st.warning(f"Attempt {attempt + 1} failed for {ticker}: {str(e)}. Retrying...")
+                time.sleep(random.uniform(1, 3))  # Random delay between retries
+            else:
+                st.error(f"Failed to fetch data for {ticker} after {max_retries} attempts: {str(e)}")
+    return pd.DataFrame()  # Return empty DataFrame if all attempts fail
+
 # Streamlit app
 st.set_page_config(layout="wide")  # Set the page to wide mode
 st.title('Dutch Stock Strategy Backtester')
@@ -64,16 +81,14 @@ start_date = st.date_input('Start Date', value=end_date - timedelta(days=365))
 all_strategies = load_strategies()
 
 results = []
+progress_bar = st.progress(0)
 for index, row in tickers_df.iterrows():
     ticker = row['Ticker']
     name = row['Name']
     
-    # Fetch data
-    try:
-        df = yf.download(ticker, start=start_date, end=end_date)
-    except Exception as e:
-        st.error(f"Failed to fetch data for {ticker}: {e}")
-        continue
+    # Fetch data with retry
+    df = fetch_data_with_retry(ticker, start_date, end_date)
+    
     if not df.empty:
         data = bt.feeds.PandasData(dataname=df)
         
@@ -98,8 +113,9 @@ for index, row in tickers_df.iterrows():
                 'Difference to Buy & Hold (EUR)': round(diff_to_buy_and_hold, 2),
                 'Buy/Sell Signal': current_signal
             })
-    else:
-        st.error(f"No data found for the ticker {ticker} within the selected date range.")
+    
+    # Update progress bar
+    progress_bar.progress((index + 1) / len(tickers_df))
 
 # Display results
 results_df = pd.DataFrame(results)
